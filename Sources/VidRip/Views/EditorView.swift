@@ -88,11 +88,13 @@ final class KeyMonitor: ObservableObject {
     func install(_ handler: @escaping @MainActor (NSEvent) -> Bool) {
         remove()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated {
-                if event.window?.firstResponder is NSText { return event }
-                if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty { return event }
-                return handler(event) ? nil : event
+            let handled: Bool = MainActor.assumeIsolated {
+                // Let text fields have their keys, and leave ⌘/⌃/⌥ shortcuts to menus.
+                if event.window?.firstResponder is NSText { return false }
+                if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty { return false }
+                return handler(event)
             }
+            return handled ? nil : event
         }
     }
 

@@ -1,0 +1,86 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Build VidRip.app and VidRip.dmg
+        env:
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="${VERSION#v}" ./scripts/build_app.sh
+
+      - name: Check bundled tools
+        run: |
+          BIN=dist/VidRip.app/Contents/Resources/bin
+          "$BIN/ffmpeg" -hide_banner -version | head -1
+          "$BIN/ffmpeg" -hide_banner -encoders | grep -E "libx264|prores_ks|h264_videotoolbox"
+          "$BIN/deno" --version
+          "$BIN/yt-dlp" --version
+          # Exercise the same encoder settings the app uses for export.
+          "$BIN/ffmpeg" -hide_banner -nostdin -y -f lavfi -i testsrc2=size=1280x720:rate=30 -f lavfi -i sine=frequency=440 \
+            -t 3 -map 0:v:0 -map 1:a:0 -vf crop=640:360:10:10 -fps_mode cfr \
+            -c:v libx264 -preset fast -crf 17 -profile:v high -pix_fmt yuv420p -c:a aac -b:a 320k -ar 48000 \
+            -movflags +faststart build/test.mp4
+          "$BIN/ffmpeg" -hide_banner -nostdin -y -ss 0.5 -i build/test.mp4 -t 1 -map "0:v:0?" -map "0:a:0?" -fps_mode cfr \
+            -c:v prores_ks -profile:v 2 -vendor apl0 -pix_fmt yuv422p10le -c:a pcm_s16le -ar 48000 build/test.mov
+          ls -l build/test.mp4 build/test.mov
+
+      - name: Try a real YouTube download (informational; may be blocked on CI)
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          BIN=dist/VidRip.app/Contents/Resources/bin
+          PATH="$PWD/$BIN:$PATH" "$BIN/yt-dlp" --no-playlist -f "bv*[dynamic_range=SDR]+ba/bv*+ba/b" \
+            -S "res:360,vcodec:h264,acodec:m4a" --merge-output-format mp4 --ffmpeg-location "$BIN/ffmpeg" \
+            --download-sections "*0-5" -o "build/yt-test.%(ext)s" -- "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+          ls -l build/yt-test.*
+
+      - name: Launch smoke test
+        continue-on-error: true
+        run: |
+          open dist/VidRip.app
+          sleep 12
+          pgrep -x VidRip && echo "VidRip is running"
+          screencapture -x build/screenshot.png || true
+          pkill -x VidRip || true
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: VidRip-macOS
+          path: dist/VidRip.dmg
+          if-no-files-found: error
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot
+          path: build/screenshot.png
+          if-no-files-found: ignore
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/VidRip.dmg

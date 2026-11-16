@@ -77,6 +77,21 @@ jobs:
           done
           echo "Self-test passed: 1.5 s clips, cropped to 720x720, with audio, as MP4 and ProRes MOV"
 
+      - name: Mouse test (timeline window, playhead, crop window)
+        run: |
+          BIN=dist/VidRip.app/Contents/Resources/bin
+          "$BIN/ffmpeg" -hide_banner -loglevel error -nostdin -y -f lavfi -i testsrc2=size=1280x720:rate=30 \
+            -f lavfi -i sine=frequency=440 -t 60 -c:v libx264 -pix_fmt yuv420p -c:a aac build/uitest.mp4
+          rm -f build/ui-probe.json
+          dist/VidRip.app/Contents/MacOS/VidRip --open "$PWD/build/uitest.mp4" --ui-probe "$PWD/build/ui-probe.json" &
+          APP_PID=$!
+          set +e
+          swift scripts/ui_test.swift build/ui-probe.json
+          RESULT=$?
+          screencapture -x build/screenshot.png
+          kill $APP_PID
+          exit $RESULT
+
       - name: Launch smoke test
         continue-on-error: true
         run: |

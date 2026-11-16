@@ -308,7 +308,8 @@ final class EditorModel: ObservableObject {
         if let ratio = cropAspect.ratio {
             cropRect = largestRect(ratio: ratio, centeredAt: CGPoint(x: videoSize.width / 2, y: videoSize.height / 2))
         } else {
-            cropRect = cropBounds
+            // Start inset from the edges so the window and its handles are easy to see and grab.
+            cropRect = cropBounds.insetBy(dx: videoSize.width * 0.1, dy: videoSize.height * 0.1)
         }
     }
 

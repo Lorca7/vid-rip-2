@@ -138,7 +138,8 @@ struct TransportBar: View {
                     Label("Crop Frame", systemImage: "crop")
                 }
                 .toggleStyle(.button)
-                .help("Show a window over the video to choose which part of the frame to keep")
+                .help("Show a window over the video to choose which part of the frame to keep. Drag on the picture to draw a new area.")
+                .probe("cropToggle")
 
                 if editor.cropEnabled {
                     Picker("Aspect", selection: $editor.cropAspect) {

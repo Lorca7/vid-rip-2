@@ -74,20 +74,34 @@ struct CropOverlay: View {
             .stroke(Color.white.opacity(0.35), lineWidth: 1)
             .allowsHitTesting(false)
 
-            // The window body: drag to move.
+            // Bottom layer: drag anywhere on the picture to draw a new crop area.
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: videoRect.width, height: videoRect.height)
+                .contentShape(Rectangle())
+                .gesture(drawGesture)
+                .onHover { inside in
+                    if inside { NSCursor.crosshair.push() } else { NSCursor.pop() }
+                }
+                .probe("video")
+                .position(x: videoRect.midX, y: videoRect.midY)
+
+            // The crop window: drag inside it to move it. (Gestures go before `.position`,
+            // which would otherwise make each control cover the whole picture.)
             Rectangle()
                 .fill(Color.white.opacity(0.001))
                 .overlay(Rectangle().strokeBorder(Color.yellow, lineWidth: 2))
                 .frame(width: max(rect.width, 1), height: max(rect.height, 1))
-                .position(x: rect.midX, y: rect.midY)
+                .contentShape(Rectangle())
                 .gesture(moveGesture)
                 .onHover { inside in
                     if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
                 }
+                .probe("cropRect")
+                .position(x: rect.midX, y: rect.midY)
 
             // Resize handles (corners only when an aspect ratio is locked).
             ForEach(Handle.allCases.filter { !locked || $0.isCorner }) { handle in
-                let point = handle.point(in: rect)
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Color.yellow)
                     .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.black.opacity(0.5), lineWidth: 1))
@@ -95,11 +109,12 @@ struct CropOverlay: View {
                            height: handle.isCorner ? 14 : (handle.movesLeft || handle.movesRight ? 28 : 8))
                     .padding(6)   // bigger hit area
                     .contentShape(Rectangle())
-                    .position(point)
                     .gesture(resizeGesture(handle))
                     .onHover { inside in
                         if inside { handle.cursor.push() } else { NSCursor.pop() }
                     }
+                    .probe("cropHandle.\(handle)")
+                    .position(handle.point(in: rect))
             }
 
             // Output size label.
@@ -110,17 +125,60 @@ struct CropOverlay: View {
                 .padding(.vertical, 2)
                 .background(Color.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4))
                 .foregroundStyle(.white)
-                .position(x: rect.minX + 46, y: rect.minY + 14)
                 .allowsHitTesting(false)
+                .position(x: rect.minX + 46, y: rect.minY + 14)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .coordinateSpace(name: "crop")
+    }
+
+    /// Converts a point in this view to video pixels, clamped to the picture.
+    private func toPixels(_ point: CGPoint) -> CGPoint {
+        let size = editor.videoSize
+        let x = (point.x - videoRect.minX) / scale
+        let y = (point.y - videoRect.minY) / scale
+        return CGPoint(x: min(max(x, 0), size.width), y: min(max(y, 0), size.height))
+    }
+
+    /// Rectangle from `a` to `b` in video pixels, respecting the locked aspect ratio.
+    private func drawnRect(from a: CGPoint, to b: CGPoint) -> CGRect {
+        let bounds = editor.cropBounds
+        var width = abs(b.x - a.x)
+        var height = abs(b.y - a.y)
+        if let ratio = editor.cropAspect.ratio {
+            // Follow the larger movement, then shrink to fit inside the picture.
+            if width / max(height, 1) > ratio { height = width / ratio } else { width = height * ratio }
+            let maxWidth = b.x >= a.x ? bounds.maxX - a.x : a.x
+            let maxHeight = b.y >= a.y ? bounds.maxY - a.y : a.y
+            let fit = min(1, maxWidth / max(width, 1), maxHeight / max(height, 1))
+            width *= fit
+            height *= fit
+        }
+        let x = b.x >= a.x ? a.x : a.x - width
+        let y = b.y >= a.y ? a.y : a.y - height
+        return CGRect(x: x, y: y, width: width, height: height).intersection(bounds)
+    }
+
+    private var drawGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("crop"))
+            .onChanged { value in
+                let rect = drawnRect(from: toPixels(value.startLocation), to: toPixels(value.location))
+                if rect.width >= 8 && rect.height >= 8 { editor.cropRect = rect }
+            }
     }
 
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named("crop"))
             .onChanged { value in
                 let start = dragStartRect ?? editor.cropRect
                 if dragStartRect == nil { dragStartRect = start }
                 let bounds = editor.cropBounds
+                // A window covering the whole picture can't move, so draw a new one instead.
+                if start.width >= bounds.width - 1 && start.height >= bounds.height - 1 {
+                    let rect = drawnRect(from: toPixels(value.startLocation), to: toPixels(value.location))
+                    if rect.width >= 8 && rect.height >= 8 { editor.cropRect = rect }
+                    return
+                }
                 var moved = start.offsetBy(dx: value.translation.width / scale, dy: value.translation.height / scale)
                 moved.origin.x = min(max(moved.minX, 0), bounds.width - moved.width)
                 moved.origin.y = min(max(moved.minY, 0), bounds.height - moved.height)
@@ -130,7 +188,7 @@ struct CropOverlay: View {
     }
 
     private func resizeGesture(_ handle: Handle) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named("crop"))
             .onChanged { value in
                 let start = dragStartRect ?? editor.cropRect
                 if dragStartRect == nil { dragStartRect = start }

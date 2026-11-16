@@ -38,7 +38,7 @@ struct TimelineView: View {
                 Button("Fit") { zoom = 1 }
                     .controlSize(.small)
                 Spacer()
-                Text("Drag the yellow window to move it · drag its edges to resize · click the strip to move the playhead")
+                Text("Drag the yellow window to move it · drag its edges to resize · click anywhere on the timeline to place the playhead")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -90,68 +90,80 @@ struct TimelineTrack: View {
         let outX = x(editor.outPoint)
         let stripMid = rulerHeight + stripHeight / 2
 
+        // Note: gestures and hover handlers must be attached *before* `.position`,
+        // because `.position` makes a view fill its whole parent; otherwise the topmost
+        // control would capture every click on the timeline.
         ZStack(alignment: .topLeading) {
-            // Ruler (click or drag to scrub).
-            Ruler(duration: editor.duration, pad: pad)
-                .frame(width: width, height: rulerHeight)
+            // Bottom layer: click or drag anywhere on the timeline to place the playhead.
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: width, height: height)
                 .contentShape(Rectangle())
                 .gesture(scrubGesture)
+                .probe("track")
 
-            // Filmstrip (click or drag to scrub).
+            Ruler(duration: editor.duration, pad: pad)
+                .frame(width: width, height: rulerHeight)
+                .allowsHitTesting(false)
+
             Filmstrip(images: editor.thumbnails, hasVideo: editor.hasVideo)
                 .frame(width: usable, height: stripHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                .allowsHitTesting(false)
                 .position(x: pad + usable / 2, y: stripMid)
-                .gesture(scrubGesture)
 
             // Dim what's outside the selection.
             Rectangle()
                 .fill(Color.black.opacity(0.55))
                 .frame(width: max(inX - pad, 0), height: stripHeight)
-                .position(x: pad + max(inX - pad, 0) / 2, y: stripMid)
                 .allowsHitTesting(false)
+                .position(x: pad + max(inX - pad, 0) / 2, y: stripMid)
             Rectangle()
                 .fill(Color.black.opacity(0.55))
                 .frame(width: max(pad + usable - outX, 0), height: stripHeight)
-                .position(x: outX + max(pad + usable - outX, 0) / 2, y: stripMid)
                 .allowsHitTesting(false)
+                .position(x: outX + max(pad + usable - outX, 0) / 2, y: stripMid)
 
-            // Selection window body: drag to move, click to place the playhead.
+            // Selection window body: drag to move it (keeping its length), click to place the playhead.
             Rectangle()
                 .fill(Color.yellow.opacity(0.08))
-                .overlay(
-                    Rectangle()
-                        .strokeBorder(Color.yellow, lineWidth: 3)
-                )
+                .overlay(Rectangle().strokeBorder(Color.yellow, lineWidth: 3))
                 .frame(width: max(outX - inX, 2), height: stripHeight)
-                .position(x: (inX + outX) / 2, y: stripMid)
+                .contentShape(Rectangle())
                 .gesture(moveGesture)
                 .onHover { inside in
                     if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
                 }
+                .probe("selection")
+                .position(x: (inX + outX) / 2, y: stripMid)
 
-            // Left and right handles: drag to expand or shrink.
+            // Left and right handles: drag to expand or shrink the window.
             SelectionHandle(edge: .leading)
                 .frame(width: handleWidth, height: stripHeight)
-                .position(x: inX - handleWidth / 2, y: stripMid)
+                .contentShape(Rectangle())
                 .gesture(handleGesture(isStart: true))
                 .onHover { inside in
                     if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
                 }
+                .probe("leftHandle")
+                .position(x: inX - handleWidth / 2, y: stripMid)
             SelectionHandle(edge: .trailing)
                 .frame(width: handleWidth, height: stripHeight)
-                .position(x: outX + handleWidth / 2, y: stripMid)
+                .contentShape(Rectangle())
                 .gesture(handleGesture(isStart: false))
                 .onHover { inside in
                     if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
                 }
+                .probe("rightHandle")
+                .position(x: outX + handleWidth / 2, y: stripMid)
 
             // Playhead.
             Playhead()
                 .frame(width: 11, height: height)
-                .position(x: x(editor.currentTime), y: height / 2)
                 .allowsHitTesting(false)
+                .position(x: x(editor.currentTime), y: height / 2)
         }
+        .frame(width: width, height: height, alignment: .topLeading)
         .coordinateSpace(name: "timeline")
     }
 

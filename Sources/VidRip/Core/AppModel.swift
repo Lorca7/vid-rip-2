@@ -56,6 +56,9 @@ final class AppModel: ObservableObject {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
             return arguments[index + 1]
         }
+        if let probePath = value(after: "--ui-probe") {
+            UIProbe.shared.start(writingTo: URL(fileURLWithPath: probePath))
+        }
         guard let path = value(after: "--open") else { return }
         let selfTestOutput = value(after: "--selftest-export").map { URL(fileURLWithPath: $0) }
 
@@ -186,7 +189,9 @@ final class AppModel: ObservableObject {
 
     private func open(_ clip: Clip) {
         editor?.teardown()
-        editor = EditorModel(clip: clip)
+        let newEditor = EditorModel(clip: clip)
+        editor = newEditor
+        UIProbe.shared.editor = newEditor
     }
 
     func closeEditor() {

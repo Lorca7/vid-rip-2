@@ -5,6 +5,11 @@ on:
     branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a GitHub release with this tag (e.g. v1.0.0). Leave empty to only build."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -24,7 +29,7 @@ jobs:
 
       - name: Build VidRip.app and VidRip.dmg
         env:
-          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+          VERSION: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '1.0.0' }}
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
           VERSION="${VERSION#v}" ./scripts/build_app.sh
@@ -97,7 +102,15 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: VidRip ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           files: dist/VidRip.dmg
+          body: |
+            **Download VidRip.dmg below**, open it, and drag VidRip into Applications.
+            The first time, right-click VidRip in Applications and choose **Open** (the app isn't notarized by Apple).
+            Requires macOS 14 Sonoma or later, on Apple Silicon or Intel.

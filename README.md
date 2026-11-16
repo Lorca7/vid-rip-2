@@ -11,10 +11,11 @@ video editor can import.
 2. **Pick the part you want**: the yellow **selection window** on the filmstrip timeline:
    - drag the middle of the window to **move** it along the video,
    - drag its left or right handle to **expand or shrink** it,
-   - click the ruler or filmstrip to move the playhead, and zoom in for precise cuts,
+   - click anywhere on the timeline to place the playhead, and zoom in for precise cuts,
    - or type exact start and end times, or press **I** / **O** to set them at the playhead.
-3. **Crop Frame** (optional): a second window over the video picture, also movable and
-   resizable, with Free, 16:9, 9:16 (Reels, Shorts, TikTok), 1:1, 4:5 and 4:3 shapes.
+3. **Crop Frame** (optional): a second window over the video picture. Drag inside it to move
+   it, drag its yellow handles to resize it, or drag across the picture to draw a new area.
+   Shapes: Free, 16:9, 9:16 (Reels, Shorts, TikTok), 1:1, 4:5 and 4:3.
 4. **Export Clip**: saves to your Desktop (or a folder you choose):
 
 | Format | Use it for |

@@ -80,6 +80,7 @@ final class EditorModel: ObservableObject {
     private var playingSelection = false
     private var exportTask: Task<Void, Never>?
     private var thumbnailTask: Task<Void, Never>?
+    private var loadTask: Task<Void, Never>?
 
     let thumbnailCount = 48
 
@@ -101,8 +102,15 @@ final class EditorModel: ObservableObject {
 
     // MARK: Loading
 
+    /// Loads the video's details. Safe to call more than once; the work happens once.
     func load() async {
-        guard !isReady else { return }
+        if loadTask == nil {
+            loadTask = Task { await performLoad() }
+        }
+        await loadTask?.value
+    }
+
+    private func performLoad() async {
         let asset = AVURLAsset(url: clip.fileURL)
         do {
             let length = try await asset.load(.duration).seconds

@@ -42,6 +42,65 @@ final class AppModel: ObservableObject {
         toolsReady = Task.detached(priority: .userInitiated) {
             ToolBox.shared.prepare()
         }
+        handleLaunchArguments()
+    }
+
+    // MARK: Launch arguments
+
+    /// `--open <file>` opens a video at launch. Adding `--selftest-export <output.mp4>` also
+    /// selects 1.0–2.5 s, crops to a square, exports, and quits (exit 0 on success).
+    /// Used by the automated build to check the whole editing pipeline.
+    private func handleLaunchArguments() {
+        let arguments = CommandLine.arguments
+        func value(after flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        guard let path = value(after: "--open") else { return }
+        let selfTestOutput = value(after: "--selftest-export").map { URL(fileURLWithPath: $0) }
+
+        Task {
+            openLocalFile(URL(fileURLWithPath: path))
+            guard let output = selfTestOutput else { return }
+            await runSelfTest(output: output)
+        }
+    }
+
+    private func runSelfTest(output: URL) async {
+        func finish(_ code: Int32, _ message: String) -> Never {
+            FileHandle.standardError.write(Data("VidRip self-test: \(message)\n".utf8))
+            exit(code)
+        }
+        let deadline = Date().addingTimeInterval(240)
+        while editor == nil {
+            if let alert { finish(1, "open failed: \(alert.message)") }
+            if Date() > deadline { finish(1, "timed out opening the file") }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        guard let editor else { finish(1, "no editor") }
+        await editor.load()
+        if let error = editor.loadError { finish(1, "load failed: \(error)") }
+        FileHandle.standardError.write(Data("VidRip self-test: loaded \(editor.duration)s \(Int(editor.videoSize.width))x\(Int(editor.videoSize.height)) @ \(editor.frameRate) fps\n".utf8))
+
+        editor.setSelection(start: 1, end: 2.5)
+        editor.seek(to: 1.5)
+        editor.cropEnabled = true
+        editor.cropAspect = .square
+        editor.exportFormat = output.pathExtension.lowercased() == "mov" ? .prores : .mp4
+        editor.destination = output.deletingLastPathComponent()
+        editor.fileName = output.deletingPathExtension().lastPathComponent
+        editor.includeRangeInName = false
+        editor.export()
+
+        while editor.isExporting {
+            if Date() > deadline { finish(1, "timed out exporting") }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        switch editor.exportState {
+        case .done(let url): finish(0, "exported \(url.path)")
+        case .failed(let message): finish(1, "export failed: \(message)")
+        default: finish(1, "export did not finish")
+        }
     }
 
     var isWorking: Bool {

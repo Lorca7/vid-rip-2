@@ -55,6 +55,23 @@ jobs:
             --download-sections "*0-5" -o "build/yt-test.%(ext)s" -- "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
           ls -l build/yt-test.*
 
+      - name: End-to-end self-test (open, convert, select, crop, export)
+        run: |
+          BIN=dist/VidRip.app/Contents/Resources/bin
+          # 6 s 1280x720 test video in MKV, which macOS can't preview, so the app must convert it first.
+          "$BIN/ffmpeg" -hide_banner -loglevel error -nostdin -y -f lavfi -i testsrc2=size=1280x720:rate=30 \
+            -f lavfi -i sine=frequency=440 -t 6 -c:v libx264 -pix_fmt yuv420p -c:a aac build/selftest-in.mkv
+          for ext in mp4 mov; do
+            rm -f "build/selftest-out.$ext"
+            perl -e 'alarm 300; exec @ARGV' dist/VidRip.app/Contents/MacOS/VidRip \
+              --open "$PWD/build/selftest-in.mkv" --selftest-export "$PWD/build/selftest-out.$ext"
+            "$BIN/ffmpeg" -hide_banner -i "build/selftest-out.$ext" 2>&1 | grep -E "Duration|Stream" | tee "build/probe-$ext.txt"
+            grep -q "Duration: 00:00:01.5" "build/probe-$ext.txt"
+            grep -q "720x720" "build/probe-$ext.txt"
+            grep -q "Audio:" "build/probe-$ext.txt"
+          done
+          echo "Self-test passed: 1.5 s clips, cropped to 720x720, with audio, as MP4 and ProRes MOV"
+
       - name: Launch smoke test
         continue-on-error: true
         run: |

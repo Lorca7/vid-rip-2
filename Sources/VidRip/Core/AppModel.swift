@@ -100,7 +100,7 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
         switch editor.exportState {
-        case .done(let url): finish(0, "exported \(url.path)")
+        case .done(let url): finish(0, "exported \(url.path) using \(editor.lastExportEncoder ?? "?")")
         case .failed(let message): finish(1, "export failed: \(message)")
         default: finish(1, "export did not finish")
         }

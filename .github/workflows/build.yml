@@ -77,6 +77,23 @@ jobs:
           done
           echo "Self-test passed: 1.5 s clips, cropped to 720x720, with audio, as MP4 and ProRes MOV"
 
+      - name: Export CPU usage (software vs hardware encoders, informational)
+        continue-on-error: true
+        run: |
+          BIN=dist/VidRip.app/Contents/Resources/bin
+          "$BIN/ffmpeg" -hide_banner -loglevel error -nostdin -y -f lavfi -i testsrc2=size=1920x1080:rate=30 \
+            -f lavfi -i sine=frequency=440 -t 20 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac build/cpu-in.mp4
+          measure() { # label, then encoder arguments
+            label="$1"; shift
+            /usr/bin/time -p "$BIN/ffmpeg" -hide_banner -loglevel error -nostdin -y "$@" 2> build/time.txt || { echo "$label: not available"; cat build/time.txt | tail -3; return; }
+            awk -v l="$label" '/^real/{r=$2} /^user/{u=$2} /^sys/{s=$2} END{printf "%-26s %6.1fs CPU time, %5.1fs wall clock\n", l, u+s, r}' build/time.txt
+          }
+          measure "Old: software H.264"   -i build/cpu-in.mp4 -c:v libx264 -preset fast -crf 17 -profile:v high -pix_fmt yuv420p -c:a aac -b:a 320k build/cpu-sw.mp4
+          measure "New: hardware H.264"   -hwaccel videotoolbox -i build/cpu-in.mp4 -c:v h264_videotoolbox -b:v 16M -profile:v high -pix_fmt yuv420p -c:a aac -b:a 320k build/cpu-hw.mp4
+          measure "Old: software ProRes"  -i build/cpu-in.mp4 -c:v prores_ks -profile:v 2 -vendor apl0 -pix_fmt yuv422p10le -c:a pcm_s16le build/cpu-sw.mov
+          measure "New: hardware ProRes"  -hwaccel videotoolbox -i build/cpu-in.mp4 -c:v prores_videotoolbox -profile:v standard -c:a pcm_s16le build/cpu-hw.mov
+          ls -l build/cpu-*.mp4 build/cpu-*.mov 2>/dev/null || true
+
       - name: Mouse test (timeline window, playhead, crop window)
         run: |
           BIN=dist/VidRip.app/Contents/Resources/bin

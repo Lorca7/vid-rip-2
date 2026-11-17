@@ -110,7 +110,7 @@ enum MediaPrep {
             arguments += videoArgs + audioArgs
             arguments += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", temp.path]
 
-            let result = try await ProcessRunner.run(ffmpeg, arguments) { line in
+            let result = try await ProcessRunner.run(ffmpeg, arguments, qualityOfService: .utility) { line in
                 if let seconds = FFmpegProgress.seconds(from: line), duration > 0 {
                     let fraction = min(max(seconds / duration, 0), 1)
                     onStatus("Preparing video for editing… \(Int(fraction * 100))%", fraction)

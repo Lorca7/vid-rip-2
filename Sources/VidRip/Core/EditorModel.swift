@@ -74,6 +74,8 @@ final class EditorModel: ObservableObject {
     @Published var includeRangeInName = true
     @Published var destination: URL
     @Published private(set) var exportState: ExportState = .idle
+    /// Which encoder the last export used (e.g. "hardware H.264").
+    @Published private(set) var lastExportEncoder: String?
 
     private var timeObserver: Any?
     private var statusSubscription: AnyCancellable?
@@ -364,12 +366,13 @@ final class EditorModel: ObservableObject {
         let format = exportFormat
         let output = Exporter.uniqueURL(in: destination, baseName: suggestedFileName, fileExtension: format.fileExtension)
         let crop: CGRect? = (cropEnabled && hasVideo && format.hasVideo && cropRect.size != videoSize) ? cropRect : nil
-        let job = ExportJob(input: clip.fileURL, start: inPoint, end: outPoint, crop: crop, format: format, output: output)
+        let job = ExportJob(input: clip.fileURL, start: inPoint, end: outPoint, crop: crop, format: format,
+                            output: output, videoSize: videoSize, frameRate: frameRate)
 
         exportState = .running(0)
         exportTask = Task {
             do {
-                try await Exporter.export(job) { [weak self] fraction in
+                lastExportEncoder = try await Exporter.export(job) { [weak self] fraction in
                     Task { @MainActor in
                         guard let self, self.isExporting else { return }
                         self.exportState = .running(fraction)

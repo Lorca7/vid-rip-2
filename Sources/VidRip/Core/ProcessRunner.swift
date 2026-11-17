@@ -74,6 +74,7 @@ enum ProcessRunner {
     static func run(
         _ executable: URL,
         _ arguments: [String],
+        qualityOfService: QualityOfService = .default,
         onLine: @escaping @Sendable (String) -> Void = { _ in }
     ) async throws -> ProcessResult {
         try Task.checkCancellation()
@@ -83,6 +84,7 @@ enum ProcessRunner {
         process.arguments = arguments
         process.environment = ToolBox.shared.environment
         process.standardInput = FileHandle.nullDevice
+        process.qualityOfService = qualityOfService
         let outPipe = Pipe()
         let errPipe = Pipe()
         process.standardOutput = outPipe
